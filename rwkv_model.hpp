@@ -356,7 +356,7 @@ public:
 		auto x1 = cuda::create_tensor<half>(input_shape);
 
 		cuda::token_to_emb(&tokens[0], token_size, emb.emb_weight, x0);
-		cuda::sync();
+		//cuda::sync();
 
 		for (uint32_t i = 0; i < this->layer_count; i++)
 		{
@@ -446,7 +446,7 @@ public:
 
 		std::vector<float> logits(vocab_size);
 		cuda::emb_to_logits(x0, token_size, head.head_weight, &logits[0]);
-		cuda::sync();
+		//cuda::sync();
 
 		cuda::free_tensor(x0);
 		cuda::free_tensor(x1);

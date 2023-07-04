@@ -67,42 +67,6 @@ namespace cuda
 	}
 
 	template<typename T>
-	inline cudaError_t gemv(
-		half* a, T* b,
-		T* c,
-		int m, int k
-	)
-	{
-		using default_config = typename cutlass::gemm::device::DefaultGemmConfiguration<mma_op_class, sm_arch, half, T, T, float>;
-
-		using gemv = cutlass::gemm::device::Gemv<
-			cutlass::gemm::kernel::Gemv<
-			half, cutlass::layout::ColumnMajor,
-			T,
-			T,
-			float,
-			epilogue_op_nop<T>
-			>
-		>;
-
-		typename gemv gemv_op;
-
-		typename gemv::Arguments args(
-			{ m, k },
-			{1, 0},
-			{ a, m },
-			b, 
-			c, 
-			c,
-			1, 1, 1
-		);
-
-		auto status = gemv_op(args);
-
-		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
-	}
-
-	template<typename T>
 	inline cudaError_t gemm_sigmoid(
 		half* a, T* b,
 		T* c,
@@ -136,42 +100,6 @@ namespace cuda
 		);
 
 		auto status = gemm_op(args);
-
-		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
-	}
-
-	template<typename T>
-	inline cudaError_t gemv_sigmoid(
-		half* a, T* b,
-		T* c,
-		int m, int k
-	)
-	{
-		using default_config = typename cutlass::gemm::device::DefaultGemmConfiguration<mma_op_class, sm_arch, half, T, T, float>;
-
-		using gemv = cutlass::gemm::device::Gemv<
-			cutlass::gemm::kernel::Gemv<
-			half, cutlass::layout::ColumnMajor,
-			T,
-			T,
-			float,
-			epilogue_op_sigmoid<T>
-			>
-		>;
-
-		typename gemv gemv_op;
-
-		typename gemv::Arguments args(
-			{ m, k },
-			{ 1, 0 },
-			{ a, m },
-			b,
-			c,
-			c,
-			1, 1, 1
-		);
-
-		auto status = gemv_op(args);
 
 		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
 	}
@@ -214,6 +142,80 @@ namespace cuda
 		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
 	}
 
+#ifdef USE_CUTLASS_GEMV
+
+	template<typename T>
+	inline cudaError_t gemv(
+		half* a, T* b,
+		T* c,
+		int m, int k
+	)
+	{
+		using default_config = typename cutlass::gemm::device::DefaultGemmConfiguration<mma_op_class, sm_arch, half, T, T, float>;
+
+		using gemv = cutlass::gemm::device::Gemv<
+			cutlass::gemm::kernel::Gemv<
+			half, cutlass::layout::ColumnMajor,
+			T,
+			T,
+			float,
+			epilogue_op_nop<T>
+			>
+		>;
+
+		typename gemv gemv_op;
+
+		typename gemv::Arguments args(
+			{ m, k },
+			{1, 0},
+			{ a, m },
+			b, 
+			c, 
+			c,
+			1, 1, 1
+		);
+
+		auto status = gemv_op(args);
+
+		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
+	}
+
+	template<typename T>
+	inline cudaError_t gemv_sigmoid(
+		half* a, T* b,
+		T* c,
+		int m, int k
+	)
+	{
+		using default_config = typename cutlass::gemm::device::DefaultGemmConfiguration<mma_op_class, sm_arch, half, T, T, float>;
+
+		using gemv = cutlass::gemm::device::Gemv<
+			cutlass::gemm::kernel::Gemv<
+			half, cutlass::layout::ColumnMajor,
+			T,
+			T,
+			float,
+			epilogue_op_sigmoid<T>
+			>
+		>;
+
+		typename gemv gemv_op;
+
+		typename gemv::Arguments args(
+			{ m, k },
+			{ 1, 0 },
+			{ a, m },
+			b,
+			c,
+			c,
+			1, 1, 1
+		);
+
+		auto status = gemv_op(args);
+
+		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
+	}
+
 	template<typename T>
 	inline cudaError_t gemv_square_relu(
 		half* a, T* b,
@@ -249,6 +251,94 @@ namespace cuda
 
 		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
 	}
+
+#else
+
+	namespace kernel
+	{
+		__device__ __forceinline__ float simple_gemv_sigmoid(float x)
+		{
+			return 1.f / (1.f + exp(-x));
+		}
+	
+		__device__ __forceinline__ float simple_gemv_square_relu(float x)
+		{
+			return max(0.f, x) * max(0.f, x);
+		}
+
+		const uint32_t gemv_op_nop = 0;
+		const uint32_t gemv_op_sigmoid = 1;
+		const uint32_t gemv_op_square_relu = 2;
+
+	
+		template<typename T, uint32_t op>
+		__global__ void simple_gemv(half* a, T* b, T* c, int m, int k)
+		{
+			uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+			if (tid < m) 
+			{
+				float sum = 0;
+
+				for (uint32_t i = 0; i < k; i++)
+					sum += (float)b[i] * (float)a[i * m + tid];
+
+				if constexpr (op == gemv_op_nop)
+					c[tid] = (T)sum;
+				else if constexpr (op == gemv_op_sigmoid)
+					c[tid] = (T)simple_gemv_sigmoid(sum);
+				else if constexpr (op == gemv_op_square_relu)
+					c[tid] = (T)simple_gemv_square_relu(sum);
+			}
+		}
+	}
+
+	template<typename T>
+	inline cudaError_t gemv(
+		half* a, T* b,
+		T* c,
+		int m, int k
+	)
+	{
+		dim3 dim_grid((m + 31) / 32);
+		dim3 dim_block(32);
+
+		kernel::simple_gemv<T, kernel::gemv_op_nop><<<dim_grid, dim_block>>>(a, b, c, m, k);
+
+		return cudaGetLastError();
+	}
+	
+	template<typename T>
+	inline cudaError_t gemv_sigmoid(
+		half* a, T* b,
+		T* c,
+		int m, int k
+	)
+	{
+		dim3 dim_grid((m + 31) / 32);
+		dim3 dim_block(32);
+
+		kernel::simple_gemv<T, kernel::gemv_op_sigmoid> << <dim_grid, dim_block >> > (a, b, c, m, k);
+
+		return cudaGetLastError();
+	}
+	
+	template<typename T>
+	inline cudaError_t gemv_square_relu(
+		half* a, T* b,
+		T* c,
+		int m, int k
+	)
+	{
+		dim3 dim_grid((m + 31) / 32);
+		dim3 dim_block(32);
+
+		kernel::simple_gemv<T, kernel::gemv_op_square_relu> << <dim_grid, dim_block >> > (a, b, c, m, k);
+
+		return cudaGetLastError();
+	}
+
+#endif
 
 }
 

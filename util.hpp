@@ -124,7 +124,7 @@ namespace cuda
 		tensor.byte_size = mem_size;
 
 		cudaMalloc((void**)&tensor.data, mem_size);
-		cudaMemset((void*)tensor.data, 0, mem_size);
+		//cudaMemset((void*)tensor.data, 0, mem_size);
 
 		return tensor;
 	}

@@ -225,7 +225,7 @@ namespace cuda
 	template<typename T>
 	inline cudaError_t element_wise_product(const uint32_t count, T* a, T* b, T* c)
 	{
-		const uint32_t TM = 48;
+		const uint32_t TM = 8;
 		const uint32_t thread_dim = 16;
 		const uint32_t block_dim = count / (thread_dim * TM);
 
@@ -237,7 +237,7 @@ namespace cuda
 	template<typename T>
 	inline cudaError_t element_wise_add(const uint32_t count, T* a, T* b, T* c)
 	{
-		const uint32_t TM = 48;
+		const uint32_t TM = 8;
 		const uint32_t thread_dim = 16;
 		const uint32_t block_dim = count / (thread_dim * TM);
 
@@ -249,7 +249,7 @@ namespace cuda
 	template<typename T>
 	inline cudaError_t element_wise_scale(const uint32_t count, T* a, float b, T* c)
 	{
-		const uint32_t TM = 48;
+		const uint32_t TM = 8;
 		const uint32_t thread_dim = 16;
 		const uint32_t block_dim = count / (thread_dim * TM);
 
