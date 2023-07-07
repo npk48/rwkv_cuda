@@ -79,6 +79,7 @@ static void* mmap(void* start, size_t length, int prot, int flags, int fd, off_t
     void* ret = MapViewOfFile(h, dwDesiredAccess, DWORD_HI(offset), DWORD_LO(offset), length);
     if (ret == NULL) {
         CloseHandle(h);
+        auto err = GetLastError();
         ret = MAP_FAILED;
     }
     return ret;

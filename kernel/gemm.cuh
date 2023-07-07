@@ -142,6 +142,7 @@ namespace cuda
 		return (status != cutlass::Status::kSuccess) ? cudaErrorUnknown : cudaSuccess;
 	}
 
+//#define USE_CUTLASS_GEMV
 #ifdef USE_CUTLASS_GEMV
 
 	template<typename T>
@@ -263,7 +264,7 @@ namespace cuda
 	
 		__device__ __forceinline__ float simple_gemv_square_relu(float x)
 		{
-			return max(0.f, x) * max(0.f, x);
+			return (x > 0.f ? x : 0.f) * (x > 0.f ? x : 0.f);
 		}
 
 		const uint32_t gemv_op_nop = 0;
@@ -272,8 +273,9 @@ namespace cuda
 
 	
 		template<typename T, uint32_t op>
-		__global__ void simple_gemv(half* a, T* b, T* c, int m, int k)
+		__global__ void simple_gemv(half* a, T* b, T* c, uint32_t m, uint32_t k)
 		{
+			// one thread per row
 			uint32_t tid = threadIdx.x + blockIdx.x * blockDim.x;
 
 			if (tid < m) 
@@ -297,7 +299,7 @@ namespace cuda
 	inline cudaError_t gemv(
 		half* a, T* b,
 		T* c,
-		int m, int k
+		uint32_t m, uint32_t k
 	)
 	{
 		dim3 dim_grid((m + 31) / 32);
@@ -312,7 +314,7 @@ namespace cuda
 	inline cudaError_t gemv_sigmoid(
 		half* a, T* b,
 		T* c,
-		int m, int k
+		uint32_t m, uint32_t k
 	)
 	{
 		dim3 dim_grid((m + 31) / 32);
@@ -327,7 +329,7 @@ namespace cuda
 	inline cudaError_t gemv_square_relu(
 		half* a, T* b,
 		T* c,
-		int m, int k
+		uint32_t m, uint32_t k
 	)
 	{
 		dim3 dim_grid((m + 31) / 32);

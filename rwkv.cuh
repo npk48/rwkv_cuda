@@ -25,7 +25,7 @@ namespace cuda
 				dst[idx] = -exp(__half2float(src[idx]));
 		}
 
-		template<typename T, const uint32_t TM>
+		template<typename T>
 		__global__ void mix_rkv(
 			const uint32_t m, const uint32_t k,
 			T* xx, T* sx,
@@ -33,60 +33,23 @@ namespace cuda
 			T* rx, T* kx, T* vx
 		)
 		{
-			const uint32_t thread_id = threadIdx.x;
-			const uint32_t block_id = blockIdx.x;
-			const uint32_t thread_num = blockDim.x;
+			uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-			const uint32_t thread_per_token = k / TM;
+			if (idx >= m * k)
+				return;
 
-			T xx_tile[TM];
-			T sx_tile[TM];
+			uint32_t emb = idx % k;
 
-			half mix_r_tile[TM];
-			half mix_k_tile[TM];
-			half mix_v_tile[TM];
+			CT reg_r = (CT)mix_r[emb];
+			CT reg_k = (CT)mix_k[emb];
+			CT reg_v = (CT)mix_v[emb];
 
-			xx += (block_id * thread_num + thread_id) * TM;
-			sx += (block_id * thread_num + thread_id) * TM;
-
-			mix_r += (thread_id % thread_per_token) * TM;
-			mix_k += (thread_id % thread_per_token) * TM;
-			mix_v += (thread_id % thread_per_token) * TM;
-
-			rx += (block_id * thread_num + thread_id) * TM;
-			kx += (block_id * thread_num + thread_id) * TM;
-			vx += (block_id * thread_num + thread_id) * TM;
-
-#pragma unroll
-			for (uint32_t ld_idx = 0; ld_idx < TM; ld_idx += 8)
-			{
-#pragma unroll
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					xx_tile[ld_idx + i] = xx[ld_idx + i];
-					sx_tile[ld_idx + i] = sx[ld_idx + i];
-
-					mix_r_tile[ld_idx + i] = mix_r[ld_idx + i];
-					mix_k_tile[ld_idx + i] = mix_k[ld_idx + i];
-					mix_v_tile[ld_idx + i] = mix_v[ld_idx + i];
-				}
-			}
-
-#pragma unroll
-			for (uint32_t ld_idx = 0; ld_idx < TM; ld_idx += 8)
-			{
-#pragma unroll
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					rx[ld_idx + i] = (T)((float)xx_tile[ld_idx + i] * (float)mix_r_tile[ld_idx + i] + (float)sx_tile[ld_idx + i] * (1.0f - (float)mix_r_tile[ld_idx + i]));
-					kx[ld_idx + i] = (T)((float)xx_tile[ld_idx + i] * (float)mix_k_tile[ld_idx + i] + (float)sx_tile[ld_idx + i] * (1.0f - (float)mix_k_tile[ld_idx + i]));
-					vx[ld_idx + i] = (T)((float)xx_tile[ld_idx + i] * (float)mix_v_tile[ld_idx + i] + (float)sx_tile[ld_idx + i] * (1.0f - (float)mix_v_tile[ld_idx + i]));
-				}
-			}
-
+			rx[idx] = (T)(((CT)xx[idx]) * reg_r + ((CT)sx[idx]) * ((CT)1.0f - reg_r));
+			kx[idx] = (T)(((CT)xx[idx]) * reg_k + ((CT)sx[idx]) * ((CT)1.0f - reg_k));
+			vx[idx] = (T)(((CT)xx[idx]) * reg_v + ((CT)sx[idx]) * ((CT)1.0f - reg_v));
 		}
 
-		template<typename T, const uint32_t TM>
+		template<typename T>
 		__global__ void mix_rk(
 			const uint32_t m, const uint32_t k,
 			T* xx, T* sx,
@@ -94,52 +57,18 @@ namespace cuda
 			T* rx, T* kx
 		)
 		{
-			const uint32_t thread_id = threadIdx.x;
-			const uint32_t block_id = blockIdx.x;
-			const uint32_t thread_num = blockDim.x;
+			uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-			const uint32_t thread_per_token = k / TM;
+			if (idx >= m * k)
+				return;
 
-			T xx_tile[TM];
-			T sx_tile[TM];
+			uint32_t emb = idx % k;
 
-			half mix_r_tile[TM];
-			half mix_k_tile[TM];
+			CT reg_r = (CT)mix_r[emb];
+			CT reg_k = (CT)mix_k[emb];
 
-			xx += (block_id * thread_num + thread_id) * TM;
-			sx += (block_id * thread_num + thread_id) * TM;
-
-			mix_r += (thread_id % thread_per_token) * TM;
-			mix_k += (thread_id % thread_per_token) * TM;
-
-			rx += (block_id * thread_num + thread_id) * TM;
-			kx += (block_id * thread_num + thread_id) * TM;
-
-#pragma unroll
-			for (uint32_t ld_idx = 0; ld_idx < TM; ld_idx += 8)
-			{
-#pragma unroll
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					xx_tile[ld_idx + i] = xx[ld_idx + i];
-					sx_tile[ld_idx + i] = sx[ld_idx + i];
-
-					mix_r_tile[ld_idx + i] = mix_r[ld_idx + i];
-					mix_k_tile[ld_idx + i] = mix_k[ld_idx + i];
-				}
-			}
-
-#pragma unroll
-			for (uint32_t ld_idx = 0; ld_idx < TM; ld_idx += 8)
-			{
-#pragma unroll
-				for (uint32_t i = 0; i < 8; i++)
-				{
-					rx[ld_idx + i] = (T)((float)xx_tile[ld_idx + i] * (float)mix_r_tile[ld_idx + i] + (float)sx_tile[ld_idx + i] * (1.0f - (float)mix_r_tile[ld_idx + i]));
-					kx[ld_idx + i] = (T)((float)xx_tile[ld_idx + i] * (float)mix_k_tile[ld_idx + i] + (float)sx_tile[ld_idx + i] * (1.0f - (float)mix_k_tile[ld_idx + i]));
-				}
-			}
-
+			rx[idx] = (T)(((CT)xx[idx]) * reg_r + ((CT)sx[idx]) * ((CT)1.0f - reg_r));
+			kx[idx] = (T)(((CT)xx[idx]) * reg_k + ((CT)sx[idx]) * ((CT)1.0f - reg_k));
 		}
 
 		template<typename T>//, const uint32_t TM>
@@ -174,7 +103,7 @@ namespace cuda
 	{
 		uint32_t count = from.shape.x * from.shape.y * from.shape.z;
 
-		kernel::convert_att_time_decay<<<(count * 16 + 15) / 16, 15 >>>((float*)to.data, (half*)from.data, count);
+		kernel::convert_att_time_decay<<<(count + 15) / 16, 16 >>>((float*)to.data, (half*)from.data, count);
 
 		return cudaGetLastError();
 	}
@@ -183,8 +112,8 @@ namespace cuda
 	{
 		auto emb_size = emb_weight.shape.x;
 
-		for (uint64_t i = 0; i < token_size; i++)
-			cuda::copy_fp16(&((half*)emb.data)[i * emb_size], &((half*)emb_weight.data)[((uint64_t)tokens[i]) * emb_size], emb_size);
+		for (uint32_t i = 0; i < token_size; i++)
+			cuda::copy_fp16(&((half*)emb.data)[i * emb_size], &((half*)emb_weight.data)[((uint32_t)tokens[i]) * emb_size], emb_size);
 
 		return cudaGetLastError();
 	}
@@ -197,12 +126,11 @@ namespace cuda
 		T* rx, T* kx, T* vx
 	)
 	{
-		const uint32_t TM = 48;
-		const uint32_t thread_dim = 16;
-		const uint32_t block_dim = m * k / (thread_dim * TM);
+		const uint32_t thread_dim = 32;
+		const uint32_t block_dim = (m * k + thread_dim - 1)/ thread_dim;
 
-		kernel::mix_rkv<T, TM><<<block_dim, thread_dim>>>(m, k, xx, sx, mix_r, mix_k, mix_v, rx, kx, vx);
-
+		kernel::mix_rkv<T><<<block_dim, thread_dim>>>(m, k, xx, sx, mix_r, mix_k, mix_v, rx, kx, vx);
+		
 		return cudaGetLastError();
 	}
 
@@ -214,11 +142,10 @@ namespace cuda
 		T* rx, T* kx
 	)
 	{
-		const uint32_t TM = 48;
-		const uint32_t thread_dim = 16;
-		const uint32_t block_dim = m * k / (thread_dim * TM);
+		const uint32_t thread_dim = 32;
+		const uint32_t block_dim = (m * k + thread_dim - 1) / thread_dim;
 
-		kernel::mix_rk<T, TM><<<block_dim, thread_dim>>>(m, k, xx, sx, mix_r, mix_k, rx, kx);
+		kernel::mix_rk<T><<<block_dim, thread_dim>>>(m, k, xx, sx, mix_r, mix_k, rx, kx);
 
 		return cudaGetLastError();
 	}
@@ -256,36 +183,57 @@ namespace cuda
 
 		auto xx = cuda::create_tensor<T>(x.shape);
 
-		result = cuda::layernorm<T>((T*)x.data, (half*)ln1_weight.data, (half*)ln1_bias.data, (T*)xx.data, token_size, emb_size);
-		
+		cuda::inspect_tensor(x);
+		result = cuda::layernorm<T>((T*)x.data, (half*)ln1_weight.data, (half*)ln1_bias.data, (T*)xx.data, token_size, emb_size);	
+		cuda::inspect_tensor(xx);
+
 		auto rx = cuda::create_tensor<T>(x.shape);
 		auto kx = cuda::create_tensor<T>(x.shape);
 		auto vx = cuda::create_tensor<T>(x.shape);
 
 		result = cuda::mix_rkv<T>(token_size, emb_size, (T*)xx.data, (T*)att_xx.data, (half*)att_time_mix_r.data, (half*)att_time_mix_k.data, (half*)att_time_mix_v.data, (T*)rx.data, (T*)kx.data, (T*)vx.data);
-		
+		cuda::sync();
+		cuda::inspect_tensor(rx);
+		cuda::inspect_tensor(kx);
+		cuda::inspect_tensor(vx);
+
 		result = cuda::copy<T>((T*)att_xx.data, (T*)xx.data, emb_size);
 
 		// m = y, k = x
 		auto r = cuda::create_tensor<T>({ att_receptance_weight.shape.x, 1, 1 });
 		result = cuda::gemv_sigmoid<T>((half*)att_receptance_weight.data, (T*)rx.data, (T*)r.data, att_receptance_weight.shape.x, att_receptance_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(r);
 
 		auto k = cuda::create_tensor<T>({ att_key_weight.shape.x, 1, 1 });
 		result = cuda::gemv<T>((half*)att_key_weight.data, (T*)kx.data, (T*)k.data, att_key_weight.shape.x, att_key_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(k);
 
+		cuda::inspect_tensor(att_value_weight);
 		auto v = cuda::create_tensor<T>({ att_value_weight.shape.x, 1, 1 });
 		result = cuda::gemv<T>((half*)att_value_weight.data, (T*)vx.data, (T*)v.data, att_value_weight.shape.x, att_value_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(v);
 
 		auto wkv = cuda::create_tensor<T>(x.shape);
 		result = cuda::forward_wkv_one<T>(emb_size, (float*)att_aa.data, (float*)att_bb.data, (float*)att_pp.data, (float*)att_time_decay.data, (float*)att_time_first.data, (T*)k.data, (T*)v.data, (T*)wkv.data);
+		cuda::sync();
+		cuda::inspect_tensor(wkv);
 
 		auto r_dot_y = cuda::create_tensor<T>(x.shape);
 		result = cuda::element_wise_product<T>(emb_size, (T*)r.data, (T*)wkv.data, (T*)r_dot_y.data);
+		cuda::sync();
+		cuda::inspect_tensor(r_dot_y);
 
 		auto out = cuda::create_tensor<T>({ att_output_weight.shape.x, 1, 1 });
 		result = cuda::gemv<T>((half*)att_output_weight.data, (T*)r_dot_y.data, (T*)out.data, att_output_weight.shape.x, att_output_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(out);
 
 		result = cuda::element_wise_add<T>(emb_size, (T*)x.data, (T*)out.data, (T*)x.data);
+		cuda::sync();
+		cuda::inspect_tensor(x);
 
 		cuda::free_tensor(xx);
 		cuda::free_tensor(rx);
@@ -314,38 +262,56 @@ namespace cuda
 
 		auto result = cudaSuccess;
 
+		// numeric problem
+
 		auto xx = cuda::create_tensor<T>(x.shape);
 
 		result = cuda::layernorm<T>((T*)x.data, (half*)ln2_weight.data, (half*)ln2_bias.data, (T*)xx.data, token_size, emb_size);
+		cuda::sync();
+		cuda::inspect_tensor(xx);
 
 		auto rx = cuda::create_tensor<T>(x.shape);
 		auto kx = cuda::create_tensor<T>(x.shape);
 
 		result = cuda::mix_rk<T>(token_size, emb_size, (T*)xx.data, (T*)ffn_xx.data, (half*)ffn_time_mix_r.data, (half*)ffn_time_mix_k.data, (T*)rx.data, (T*)kx.data);
+		cuda::sync();
+		cuda::inspect_tensor(rx);
+		cuda::inspect_tensor(kx);
 
 		result = cuda::copy<T>((T*)ffn_xx.data, (T*)xx.data, emb_size);
+		cuda::sync();
 
 		// m = y, k = x
 		auto r = cuda::create_tensor<T>({ ffn_receptance_weight.shape.x, 1, 1 });
 		result = cuda::gemv_sigmoid<T>((half*)ffn_receptance_weight.data, (T*)rx.data, (T*)r.data, ffn_receptance_weight.shape.x, ffn_receptance_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(r);
 
+		//cuda::inspect_tensor(ffn_key_weight);
 		auto vx = cuda::create_tensor<T>({ ffn_key_weight.shape.x, 1, 1 });
 		result = cuda::gemv_square_relu<T>((half*)ffn_key_weight.data, (T*)kx.data, (T*)vx.data, ffn_key_weight.shape.x, ffn_key_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(vx);
 		// tbd square relu has problem
 		//inspect_tensor(vx);
 
 		auto vx_vw_product = cuda::create_tensor<T>({ ffn_value_weight.shape.x, 1, 1 });
 		result = cuda::gemv<T>((half*)ffn_value_weight.data, (T*)vx.data, (T*)vx_vw_product.data, ffn_value_weight.shape.x, ffn_value_weight.shape.y);
+		cuda::sync();
+		cuda::inspect_tensor(vx_vw_product);
 
 		// wrong value
 		//inspect_tensor(vx_vw_product);
 
 		auto out = cuda::create_tensor<T>(x.shape);
 		result = cuda::element_wise_product<T>(x.shape.x, (T*)r.data, (T*)vx_vw_product.data, (T*)out.data);
+		cuda::sync();
+		cuda::inspect_tensor(out);
 		
 		//inspect_tensor(out);
 
 		result = cuda::element_wise_add<T>(emb_size, (T*)x.data, (T*)out.data, (T*)x.data);
+		cuda::sync();
 
 		cuda::free_tensor(xx);
 		cuda::free_tensor(rx);
@@ -357,25 +323,17 @@ namespace cuda
 		cuda::free_tensor(out);
 	}
 
+	template<typename T>
 	inline void emb_to_logits(tensor_t& x, uint32_t token_size, tensor_t& head_weight, float* logits)
 	{
-		auto logits_out = cuda::create_tensor<half>({ head_weight.shape.x, 1, 1 });
-		auto result = cuda::gemv<half>((half*)head_weight.data, (half*)x.data, (half*)logits_out.data, head_weight.shape.x, head_weight.shape.y);
+		auto logits_out = cuda::create_tensor<T>({ head_weight.shape.x, 1, 1 });
+		auto result = cuda::gemv<T>((half*)head_weight.data, (T*)x.data, (T*)logits_out.data, head_weight.shape.x, head_weight.shape.y);
+		cuda::sync();
 
-
-		cuda::dump_fp16(logits, (half*)logits_out.data, head_weight.shape.x);
-		
-		// // x @ head_weight
-		// auto _logits_out = gemm<half>((half*)head_weight.data, (half*)x.data, (half*)x.data, );
-		// // [y=65535, x=2]
-		// auto logits_out = cuda::create_tensor_fp16(cuda::tensor_shape_t(_logits_out.shape.y, _logits_out.shape.x));
-		// // [y=2, x=65535]
-		// cuda::transpose_tensor(_logits_out, logits_out);
-		// cuda::free_tensor(_logits_out);
-		// 
-		// cuda::dump_to_host_fp16(logits, &((half*)logits_out.data)[(logits_out.shape.x - 1) * logits_out.shape.y], logits_out.shape.y);
-		// 
-		// cuda::free_tensor(logits_out);
+		if(x.type == cuda::data_type_t::fp16)
+			cuda::dump_fp16(logits, (half*)logits_out.data, head_weight.shape.x);
+		else
+			cuda::dump_fp32(logits, (float*)logits_out.data, head_weight.shape.x);
 	}
 }
 

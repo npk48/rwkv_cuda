@@ -64,12 +64,14 @@ namespace cuda
 
 	inline void load_fp16(half* d_dst, half* h_src, uint32_t count)
 	{
-		cudaMemcpy(d_dst, h_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
+		auto result = cudaMemcpy(d_dst, h_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
+		assert(result == cudaSuccess);
 	}
 
 	inline void copy_fp16(half* d_dst, half* d_src, uint32_t count)
 	{
-		cudaMemcpy(d_dst, d_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+		auto result = cudaMemcpy(d_dst, d_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+		assert(result == cudaSuccess);
 	}
 
 	template<typename T>
@@ -81,6 +83,8 @@ namespace cuda
 	static inline void sync()
 	{
 		cudaDeviceSynchronize();
+		auto result = cudaGetLastError();
+		assert(result == cudaSuccess);
 	}
 
 	enum data_type_t
@@ -123,8 +127,10 @@ namespace cuda
 
 		tensor.byte_size = mem_size;
 
-		cudaMalloc((void**)&tensor.data, mem_size);
-		//cudaMemset((void*)tensor.data, 0, mem_size);
+		auto result = cudaMalloc((void**)&tensor.data, mem_size);
+
+		assert(result == cudaSuccess);
+		// cudaMemset((void*)tensor.data, 0, mem_size);
 
 		return tensor;
 	}
@@ -136,6 +142,7 @@ namespace cuda
 
 	inline void inspect_tensor(cuda::tensor_t& tensor)
 	{
+		return;
 		//Sleep(100);
 		auto err = cudaGetLastError();
 		auto tensor_size = tensor.shape.x * tensor.shape.y * tensor.shape.z;

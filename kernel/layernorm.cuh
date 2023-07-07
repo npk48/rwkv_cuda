@@ -34,7 +34,7 @@ namespace cuda
 		}
 
 		template<typename T, const uint32_t TM>
-		__global__ void layernorm(/* float* shared_data, */ const uint32_t m, const uint32_t k, T* x, half* weight, half* bias, T* norm_x)
+		__global__ void layernorm(float* shared_data, const uint32_t m, const uint32_t k, T* x, half* weight, half* bias, T* norm_x)
 		{
 			const float eps = 1e-05;
 
@@ -45,7 +45,7 @@ namespace cuda
 
 			const uint32_t thread_per_token = k / TM; 
 
-			extern __shared__ float shared_data[];
+			//extern __shared__ float shared_data[];
 
 			/*
 				shared_weight [TM]
@@ -238,73 +238,77 @@ namespace cuda
 	}
 
 	template<typename T>
-	inline cudaError_t layernorm(T* x, half* weight, half* bias, T* norm_x, int32_t m, int32_t k)
+	inline cudaError_t layernorm(T* x, half* weight, half* bias, T* norm_x, uint32_t m, uint32_t k)
 	{
-/*
-		uint32_t emb_size = k;
-		uint32_t token_size = m;
 
-		float* mean = 0; cudaMalloc(&mean, token_size * sizeof(float));
-		float* dev = 0; cudaMalloc(&dev, token_size * sizeof(float));
-		float* sum = 0; cudaMalloc(&sum, token_size * sizeof(float));
-		float* square_sum = 0; cudaMalloc(&square_sum, token_size * sizeof(float));
+		// uint32_t emb_size = k;
+		// uint32_t token_size = m;
+		// 
+		// float* mean = 0; cudaMalloc(&mean, token_size * sizeof(float));
+		// float* dev = 0; cudaMalloc(&dev, token_size * sizeof(float));
+		// float* sum = 0; cudaMalloc(&sum, token_size * sizeof(float));
+		// float* square_sum = 0; cudaMalloc(&square_sum, token_size * sizeof(float));
+		// 
+		// kernel::mean_std_kernel<T> << <(token_size + 7) / 8, 8* 8 >> > (
+		// 	(T*)x,
+		// 	mean,
+		// 	dev,
+		// 	sum,
+		// 	square_sum,
+		// 	token_size,
+		// 	emb_size
+		// 	);
+		// 
+		// kernel::layer_norm_kernel<T, T> << <(token_size + 7) / 8, 8* 8 >> > (
+		// 	(T*)x,
+		// 	mean,
+		// 	dev,
+		// 	(half*)weight,
+		// 	(half*)bias,
+		// 	token_size,
+		// 	emb_size,
+		// 	(T*)norm_x
+		// 	);
+		// 
+		// cudaFree(mean);
+		// cudaFree(dev);
+		// cudaFree(sum);
+		// cudaFree(square_sum);
 
-		kernel::mean_std_kernel<T> << <(token_size + 8 - 1) / 8, 8* 8 >> > (
-			(T*)x,
-			mean,
-			dev,
-			sum,
-			square_sum,
-			token_size,
-			emb_size
-			);
 
-		kernel::layer_norm_kernel<T, T> << <(token_size + 8 - 1) / 8, 8* 8 >> > (
-			(T*)x,
-			mean,
-			dev,
-			(half*)weight,
-			(half*)bias,
-			token_size,
-			emb_size,
-			(T*)norm_x
-			);
 
-		cudaFree(mean);
-		cudaFree(dev);
-		cudaFree(sum);
-		cudaFree(square_sum);
-*/
-
-/*
-		const uint32_t TM = 48;
+		const uint32_t TM = 160;
 		const uint32_t thread_dim = 16;
 		const uint32_t block_dim = m * k / (thread_dim * TM);
-
+		
 		float* shared_data = 0;
 		cudaMalloc(&shared_data, m * thread_dim * 2 * sizeof(float));
-
+		
 		kernel::layernorm<T, TM><<<block_dim, thread_dim>>>(shared_data, m, k, x, weight, bias, norm_x);
-
+		
 		cudaFree(shared_data);
 
-*/
 
-		const uint32_t TM = 48;
-		const uint32_t thread_dim = 16;
-		const uint32_t batch_size = 256;
 
-		uint32_t batch_count = m / batch_size;
-		uint32_t batch_remainder = m % batch_size;
+		// const uint32_t TM = 16;
+		// const uint32_t thread_dim = 16;
+		// const uint32_t batch_size = 256;
+		// 
+		// uint32_t batch_count = m / batch_size;
+		// uint32_t batch_remainder = m % batch_size;
+		// 
+		// uint32_t batch_dim = batch_count * k / (thread_dim * TM);
+		// uint32_t remainder_dim = batch_remainder * k / (thread_dim * TM);
+		// 
+		// for (uint32_t i = 0; i < batch_count; i++)
+		// 	kernel::layernorm<T, TM><<<batch_dim, thread_dim, (batch_dim * thread_dim * 2) * sizeof(float)>>>(batch_count, k, &x[i * batch_size * k], weight, bias, &norm_x[i * batch_size * k]);
+		// 
+		// if(batch_remainder)
+		// 	kernel::layernorm<T, TM><<<remainder_dim, thread_dim, (remainder_dim * thread_dim * 2) * sizeof(float)>>>(batch_remainder, k, &x[batch_count * batch_size * k], weight, bias, &norm_x[batch_count * batch_size * k]);
 
-		uint32_t batch_dim = batch_count * k / (thread_dim * TM);
-		uint32_t remainder_dim = batch_remainder * k / (thread_dim * TM);
-
-		for (uint32_t i = 0; i < batch_count; i++)
-			kernel::layernorm<T, TM><<<batch_dim, thread_dim, (batch_dim * thread_dim * 2) * sizeof(float)>>>(batch_count, k, &x[i * batch_size * k], weight, bias, &norm_x[i * batch_size * k]);
-
-		if(batch_remainder)
-			kernel::layernorm<T, TM><<<remainder_dim, thread_dim, (remainder_dim * thread_dim * 2) * sizeof(float)>>>(batch_remainder, k, &x[batch_count * batch_size * k], weight, bias, &norm_x[batch_count * batch_size * k]);
+		cudaDeviceSynchronize();
+		auto result = cudaGetLastError();
+		assert(result == cudaSuccess);
 
 		return cudaGetLastError();
 	}
