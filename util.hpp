@@ -10,6 +10,42 @@
 
 namespace cuda
 {
+	struct timer_t
+	{
+		cudaEvent_t evt_start;
+		cudaEvent_t evt_stop;
+
+		timer_t()
+		{
+			cudaEventCreate(&evt_start);
+			cudaEventCreate(&evt_stop);
+		}
+
+		~timer_t()
+		{
+			cudaEventDestroy(evt_start);
+			cudaEventDestroy(evt_stop);
+		}
+
+		void start()
+		{
+			cudaEventRecord(evt_start, 0);
+		}
+
+		void stop()
+		{
+			cudaEventRecord(evt_stop, 0);
+		}
+
+		float elapsed_ms()
+		{
+			float elapsed;
+			cudaEventSynchronize(evt_stop);
+			cudaEventElapsedTime(&elapsed, evt_start, evt_stop);
+			return elapsed;
+		}
+	};
+
 	template<typename T>
 	inline T* malloc(uint32_t quantity)
 	{

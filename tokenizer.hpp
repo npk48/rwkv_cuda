@@ -120,8 +120,13 @@ public:
             auto result = trie_root.find_longest(src, idx);
             auto new_idx = std::get<0>(result);
             auto value = std::get<1>(result);
-            idx = new_idx;
-            tokens.push_back((uint16_t)value);
+            if (new_idx == 0)
+                idx += 1;
+            else
+            {
+                idx = new_idx;
+                tokens.push_back((uint16_t)value);
+            }
         }
         return tokens;
     }

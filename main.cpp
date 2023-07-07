@@ -65,7 +65,7 @@ int main()
 
     auto rwkv_state = rwkv_model.create_state();
 
-    std::string text1 = "今天天气真好";
+    std::string text1 = "嘉祥:香草快去准备开店吧\n\n香草:";
     //std::string text2 = "it's";
     std::string text2 = "it's a nice weather";
     std::string text3 = "hello world";
@@ -89,6 +89,10 @@ int main()
     gbk_str = utf8_to_gbk(out_word.c_str());
     printf(gbk_str.c_str());
 
+    cuda::timer_t timer;
+
+    timer.start();
+
     for (uint32_t i = 0; i < 100; i++)
     {
         token_ids = tokenizer.encode(out_word);
@@ -104,6 +108,9 @@ int main()
         gbk_str = utf8_to_gbk(out_word.c_str());
         printf(gbk_str.c_str());
     }
+
+    timer.stop();
+    printf("Time to generate:  %3.1f ms \n", timer.elapsed_ms());
 
     return 0;
 }
