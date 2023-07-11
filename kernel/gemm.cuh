@@ -282,6 +282,7 @@ namespace cuda
 			{
 				float sum = 0;
 
+#pragma unroll
 				for (uint32_t i = 0; i < k; i++)
 					sum += (float)b[i] * (float)a[i * m + tid];
 
@@ -293,6 +294,39 @@ namespace cuda
 					c[tid] = (T)simple_gemv_square_relu(sum);
 			}
 		}
+
+		template<typename T, uint32_t op>
+		__global__ void fast_gemv(half* a, T* b, T* c, uint32_t m, uint32_t k)
+		{
+			const uint32_t warp_size = 32;
+
+			const uint32_t
+				i = blockDim.x * blockIdx.x + threadIdx.x,
+				lane_id = i % warp_size,
+				j_beg_last = k / warp_size * warp_size;
+
+			float sum = 0;
+			for (uint32_t j_beg = 0; j_beg < j_beg_last; j_beg += warp_size)
+			{
+				const float val = b[j_beg + lane_id];
+				for (uint32_t j = 0; j < warp_size; ++j) 
+					sum += (float)a[(j + j_beg) * m + i] * __shfl_sync(0xffffffff, val, j, warp_size);
+			}
+			{
+				const uint32_t val = j_beg_last + lane_id < k ? b[j_beg_last + lane_id] : 0;
+				for (size_t j = 0; j < k - j_beg_last; ++j) 
+					sum += (float)a[(j + j_beg_last) * m + i] * __shfl_sync(0xffffffff, val, j, warp_size);
+			}
+			if (i < m)
+			{
+				if constexpr (op == gemv_op_nop)
+					c[i] = (T)sum;
+				else if constexpr (op == gemv_op_sigmoid)
+					c[i] = (T)simple_gemv_sigmoid(sum);
+				else if constexpr (op == gemv_op_square_relu)
+					c[i] = (T)simple_gemv_square_relu(sum);
+			}
+		}
 	}
 
 	template<typename T>
@@ -302,10 +336,19 @@ namespace cuda
 		uint32_t m, uint32_t k
 	)
 	{
-		dim3 dim_grid((m + 31) / 32);
-		dim3 dim_block(32);
+		//if constexpr (sizeof(T) == 2)
+		//{
+		//	dim3 dim_grid((m + 31) / 32);
+		//	dim3 dim_block(32);
+		//	kernel::fast_gemv<T, kernel::gemv_op_nop> << <dim_grid, dim_block >> > (a, b, c, m, k);
+		//}
+		//else
+		//{
+			dim3 dim_grid((m + 31) / 32);
+			dim3 dim_block(32);
 
-		kernel::simple_gemv<T, kernel::gemv_op_nop><<<dim_grid, dim_block>>>(a, b, c, m, k);
+			kernel::fast_gemv<T, kernel::gemv_op_nop> << <dim_grid, dim_block >> > (a, b, c, m, k);
+		//}
 
 		return cudaGetLastError();
 	}
@@ -320,7 +363,7 @@ namespace cuda
 		dim3 dim_grid((m + 31) / 32);
 		dim3 dim_block(32);
 
-		kernel::simple_gemv<T, kernel::gemv_op_sigmoid> << <dim_grid, dim_block >> > (a, b, c, m, k);
+		kernel::fast_gemv<T, kernel::gemv_op_sigmoid> << <dim_grid, dim_block >> > (a, b, c, m, k);
 
 		return cudaGetLastError();
 	}
@@ -335,7 +378,7 @@ namespace cuda
 		dim3 dim_grid((m + 31) / 32);
 		dim3 dim_block(32);
 
-		kernel::simple_gemv<T, kernel::gemv_op_square_relu> << <dim_grid, dim_block >> > (a, b, c, m, k);
+		kernel::fast_gemv<T, kernel::gemv_op_square_relu> << <dim_grid, dim_block >> > (a, b, c, m, k);
 
 		return cudaGetLastError();
 	}
