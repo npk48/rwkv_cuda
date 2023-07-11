@@ -39,7 +39,7 @@ namespace cuda
 			float4* ld_vec4 = reinterpret_cast<float4*>(src);
 			float4* st_vec4 = reinterpret_cast<float4*>(dst);
 
-			float4 ld_val = ld_vec4[thread_id];;
+			float4 ld_val = ld_vec4[thread_id];
 			float4 st_val[2];
 
 			half2* ld_vec_h1 = (half2*)&ld_val.x;
