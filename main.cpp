@@ -75,17 +75,25 @@ int main()
     auto err = cudaDeviceReset();
     err = cudaSetDevice(0);
 
+    auto test_tensor = cuda::create_tensor<half>({ 256, 1, 1 });
+
+    cuda::fill_fp16((half*)test_tensor.data, 1.234, 256);
+
+    std::vector<float> test_htensor(256);
+
+    cuda::dump_fp16(&test_htensor[0], (half*)test_tensor.data, 256);
+
     //std::vector<float> test_logits = { -0.1445, -0.9658,  0.0528, -0.9129 };
     //sampler::typical(test_logits, 0.6, 0.6);
 
     auto tokenizer = trie_tokenizer_t();
-    //tokenizer.load("E:/work/rwkv_core/rwkv_vocab_v20230424.txt");
-    tokenizer.load("rwkv_vocab_v20230424.txt");
+    tokenizer.load("E:/work/rwkv_core/rwkv_vocab_v20230424.txt");
+    //tokenizer.load("rwkv_vocab_v20230424.txt");
     printf("tokenizer loaded\n");
 
     auto model_tensors = safe_tensors_model_t();
-    //model_tensors.load("E:/work/rwkv_core/util/0.1b.fp16.safetensors");
-    model_tensors.load("0.1b.fp16.safetensors");
+    model_tensors.load("E:/work/rwkv_core/util/0.1b.fp16.safetensors");
+    //model_tensors.load("0.1b.fp16.safetensors");
     //model_tensors.load("E:/work/rwkv_cuda/3b.fp16.safetensors");
     printf("model parsed\n");
 
