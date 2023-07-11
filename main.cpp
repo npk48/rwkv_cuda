@@ -17,6 +17,9 @@
 
 #include "rwkv_model.hpp"
 
+#include "simd.hpp"
+#include "sampler.hpp"
+
 #include <windows.h>
 static inline std::string gbk_to_utf8(std::string src_str)
 {
@@ -52,16 +55,44 @@ static inline std::string utf8_to_gbk(std::string src_str)
 
 int main()
 {
+    {
+        int nDevices;
+        printf("list cuda devices:\n");
+        cudaGetDeviceCount(&nDevices);
+        for (int i = 0; i < nDevices; i++) {
+            cudaDeviceProp prop;
+            cudaGetDeviceProperties(&prop, i);
+            printf("Device Number: %d\n", i);
+            printf("  Device name: %s\n", prop.name);
+            printf("  Memory Clock Rate (KHz): %d\n",
+                prop.memoryClockRate);
+            printf("  Memory Bus Width (bits): %d\n",
+                prop.memoryBusWidth);
+            printf("  Peak Memory Bandwidth (GB/s): %f\n\n",
+                2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6);
+        }
+    }
+    auto err = cudaDeviceReset();
+    err = cudaSetDevice(0);
+
+    //std::vector<float> test_logits = { -0.1445, -0.9658,  0.0528, -0.9129 };
+    //sampler::typical(test_logits, 0.6, 0.6);
+
     auto tokenizer = trie_tokenizer_t();
-    tokenizer.load("E:/work/rwkv_core/rwkv_vocab_v20230424.txt");
+    //tokenizer.load("E:/work/rwkv_core/rwkv_vocab_v20230424.txt");
+    tokenizer.load("rwkv_vocab_v20230424.txt");
+    printf("tokenizer loaded\n");
 
     auto model_tensors = safe_tensors_model_t();
     //model_tensors.load("E:/work/rwkv_core/util/0.1b.fp16.safetensors");
-    model_tensors.load("E:/work/rwkv_cuda/3b.fp16.safetensors");
+    model_tensors.load("0.1b.fp16.safetensors");
+    //model_tensors.load("E:/work/rwkv_cuda/3b.fp16.safetensors");
+    printf("model parsed\n");
 
     auto rwkv_model = rwkv_model_cuda_t();
-
+    printf("loading model\n");
     rwkv_model.load(model_tensors);
+    printf("model loaded\n");
 
     auto rwkv_state = rwkv_model.create_state();
 
@@ -78,9 +109,9 @@ int main()
     for (uint32_t i = 0; i < token_ids.size(); i++)
         logits = rwkv_model.forward(rwkv_state, std::vector<uint16_t>(1, token_ids[i]));
 
-    auto it = std::max_element(logits.begin(), logits.end());
+    //auto it = std::max_element(logits.begin(), logits.end());
 
-    uint16_t out_token_id = it - logits.begin();
+    uint16_t out_token_id = sampler::typical(logits, 0.6, 0.2);//it - logits.begin();
 
     auto out_word = tokenizer.decode({ out_token_id });
 
@@ -95,13 +126,14 @@ int main()
 
     for (uint32_t i = 0; i < 100; i++)
     {
-        token_ids = tokenizer.encode(out_word);
+        token_ids = out_word.size() == 0 ? std::vector<uint16_t>({ 0 }) : tokenizer.encode(out_word);
 
         logits = rwkv_model.forward(rwkv_state, token_ids);
+        //simd::softmax(logits);
 
-        it = std::max_element(logits.begin(), logits.end());
+        //it = std::max_element(logits.begin(), logits.end());
 
-        out_token_id = it - logits.begin();
+        out_token_id = sampler::typical(logits, 0.6, 0.2); //it - logits.begin();
 
         out_word = tokenizer.decode({ out_token_id });
 

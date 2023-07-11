@@ -10,6 +10,7 @@
 
 namespace cuda
 {
+#pragma optimize( "", off )
 	struct timer_t
 	{
 		cudaEvent_t evt_start;
@@ -50,13 +51,13 @@ namespace cuda
 	inline T* malloc(uint32_t quantity)
 	{
 		T* ptr = 0;
-		assert(cudaMalloc(&ptr, quantity * sizeof(T)) == cudaSuccess);
+		cudaMalloc(&ptr, quantity * sizeof(T));
 		return ptr;
 	}
 
 	inline void free(void* ptr)
 	{
-		assert(cudaFree(ptr) == cudaSuccess);
+		cudaFree(ptr);
 	}
 
 	inline void fill_fp16(half* d_dst, float value, uint64_t count)
@@ -95,19 +96,17 @@ namespace cuda
 
 	inline void dump_fp32(float* h_dst, float* d_src, uint32_t count)
 	{
-		assert(cudaMemcpy(&h_dst[0], d_src, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToHost) == cudaSuccess);
+		cudaMemcpy(&h_dst[0], d_src, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToHost);
 	}
 
 	inline void load_fp16(half* d_dst, half* h_src, uint32_t count)
 	{
-		auto result = cudaMemcpy(d_dst, h_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
-		assert(result == cudaSuccess);
+		cudaMemcpy(d_dst, h_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
 	}
 
 	inline void copy_fp16(half* d_dst, half* d_src, uint32_t count)
 	{
-		auto result = cudaMemcpy(d_dst, d_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
-		assert(result == cudaSuccess);
+		cudaMemcpy(d_dst, d_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
 	}
 
 	template<typename T>
@@ -163,10 +162,7 @@ namespace cuda
 
 		tensor.byte_size = mem_size;
 
-		auto result = cudaMalloc((void**)&tensor.data, mem_size);
-
-		assert(result == cudaSuccess);
-		// cudaMemset((void*)tensor.data, 0, mem_size);
+		cudaMalloc((void**)&tensor.data, mem_size);
 
 		return tensor;
 	}
@@ -209,7 +205,7 @@ namespace cuda
 		if (has_nan || has_inf)
 			err = cudaError_t::cudaErrorUnknown;
 	}
-
+#pragma optimize( "", on )
 }
 
 #endif

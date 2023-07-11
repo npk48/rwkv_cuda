@@ -277,7 +277,8 @@ namespace cuda
 
 
 
-		const uint32_t TM = 160;
+		const uint32_t TM = 48;
+		//const uint32_t TM = 160;
 		const uint32_t thread_dim = 16;
 		const uint32_t block_dim = m * k / (thread_dim * TM);
 		
@@ -305,10 +306,6 @@ namespace cuda
 		// 
 		// if(batch_remainder)
 		// 	kernel::layernorm<T, TM><<<remainder_dim, thread_dim, (remainder_dim * thread_dim * 2) * sizeof(float)>>>(batch_remainder, k, &x[batch_count * batch_size * k], weight, bias, &norm_x[batch_count * batch_size * k]);
-
-		cudaDeviceSynchronize();
-		auto result = cudaGetLastError();
-		assert(result == cudaSuccess);
 
 		return cudaGetLastError();
 	}

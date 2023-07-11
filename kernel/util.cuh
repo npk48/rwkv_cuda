@@ -101,18 +101,18 @@ namespace cuda
 
 	inline cudaError_t dump_fp16(float* h_dst, half* d_src, uint32_t count)
 	{
-		float* fp32;
+		float* fp32 = 0;
 
-		assert(cudaMalloc(&fp32, sizeof(float) * count) == cudaSuccess);
+		cudaMalloc(&fp32, sizeof(float) * count);
 
 		const uint32_t block_dim = (count + 15) / 16;
 		const uint32_t thread_dim = 16;
 
 		kernel::half_to_float<<<block_dim, thread_dim>>>(fp32, d_src, count);
 
-		assert(cudaMemcpy(h_dst, fp32, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToHost) == cudaSuccess);
+		cudaMemcpy(h_dst, fp32, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToHost);
 
-		assert(cudaFree(fp32) == cudaSuccess);
+		cudaFree(fp32);
 
 		return cudaGetLastError();
 	}

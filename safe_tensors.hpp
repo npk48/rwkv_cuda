@@ -12,6 +12,7 @@
 #include "json.hpp"
 #include "mmap.hpp"
 
+#pragma optimize( "", off )
 struct safe_tensors_t
 {
 	uint8_t* data;
@@ -98,4 +99,5 @@ private:
 
 };
 
+#pragma optimize( "", on )
 #endif

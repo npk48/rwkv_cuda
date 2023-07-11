@@ -154,6 +154,7 @@ public:
 
 		// load emb
 		this->emb.emb_weight = load_tensor("emb.weight");
+		//cuda::inspect_tensor(emb.emb_weight);
 		this->emb.ln0_weight = load_tensor("blocks.0.ln0.weight");
 		this->emb.ln0_bias = load_tensor("blocks.0.ln0.bias");
 
