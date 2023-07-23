@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="kernel">
+      <UniqueIdentifier>{f9eb898c-3008-48d4-8456-08578a032fe8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib_rwkv">
+      <UniqueIdentifier>{6922a4fe-8f77-4bbd-b6bc-acf8c0530fd6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="kernel\gemm.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\layernorm.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\util.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\elementwise.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="half.hpp" />
+    <ClInclude Include="json.hpp" />
+    <ClInclude Include="log.hpp" />
+    <ClInclude Include="mmap.hpp" />
+    <ClInclude Include="rwkv.cuh" />
+    <ClInclude Include="rwkv_model.hpp" />
+    <ClInclude Include="safe_tensors.hpp" />
+    <ClInclude Include="sampler.hpp" />
+    <ClInclude Include="simd.hpp" />
+    <ClInclude Include="simd_test.hpp" />
+    <ClInclude Include="tokenizer.hpp" />
+    <ClInclude Include="util.hpp" />
+    <ClInclude Include="kernel\softmax.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\activation.cuh">
+      <Filter>kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="thrust.hpp" />
+    <ClInclude Include="lib_rwkv\lib_rwkv.h">
+      <Filter>lib_rwkv</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="simd.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="thrust.cpp" />
+    <CudaCompile Include="lib_rwkv\lib_rwkv.cpp">
+      <Filter>lib_rwkv</Filter>
+    </CudaCompile>
+  </ItemGroup>
+</Project>

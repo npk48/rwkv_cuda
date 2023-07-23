@@ -5,9 +5,6 @@
 #include <stdio.h>
 #include <vector>
 
-
-#include "cutlass/gemm/device/gemm.h"
-
 #include "kernel/gemm.cuh"
 #include "kernel/layernorm.cuh"
 #include "util.hpp"
@@ -20,6 +17,7 @@
 #include "simd.hpp"
 #include "sampler.hpp"
 
+#ifdef _WIN32
 #include <windows.h>
 static inline std::string gbk_to_utf8(std::string src_str)
 {
@@ -53,8 +51,79 @@ static inline std::string utf8_to_gbk(std::string src_str)
     return strTemp;
 }
 
+#else
+
+static inline std::string gbk_to_utf8(std::string src_str) { return src_str; }
+static inline std::string utf8_to_gbk(std::string src_str) { return src_str; }
+
+#endif
+
+#include "thrust.hpp"
+
 int main()
 {
+    {
+        cudaDeviceReset();
+        cudaSetDevice(0);
+
+
+        //std::vector<float> test_prob(65536, 123.f);
+        //cuda::softmax_(&test_prob[0], &test_prob[0], 1, 65536);
+
+        // m = rows of output c
+        // n = cols of output c
+        // k = inner gemm dim
+        
+        // m * k , 3 * 4
+        float a[] = {
+           1, 2, 3, 4,
+           5, 6, 7, 8,
+           9, 10, 11, 12
+        };
+
+        // k * n , 4 * 4
+        float b[] = {
+            10, 20, 30, 40,
+            11, 21, 31, 41,
+            12, 22, 32, 42,
+            13, 23, 33, 43
+        };
+
+        // m * n , 3 * 4
+        float c[] = {
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0
+        };
+
+        auto da = cuda::malloc<float>(3 * 4);
+        auto db = cuda::malloc<half>(4 * 4);
+        auto dc = cuda::malloc<float>(3 * 4);
+
+        {
+            cuda::load_fp32(da, a, 3 * 4);
+
+            auto db_fp32 = cuda::malloc<float>(4 * 4);
+            cuda::load_fp32(db_fp32, b, 4 * 4);
+            cuda::convert<float, half>(db_fp32, db, 4 * 4);
+            cuda::free(db_fp32);
+
+            //cuda::load_fp32(db, b, 4 * 4);
+            cuda::load_fp32(dc, c, 3 * 4);
+        }
+
+        cuda::gemm<float, half, float>(da, db, dc, 3, 4, 4);
+        cuda::dump_fp32(c, dc, 3 * 4);
+
+        /*
+            300  310
+            700  726
+            1100 1142
+        */
+
+        int asdf = 0;
+
+    }
     {
         int nDevices;
         printf("list cuda devices:\n");
@@ -87,14 +156,14 @@ int main()
     //sampler::typical(test_logits, 0.6, 0.6);
 
     auto tokenizer = trie_tokenizer_t();
-    tokenizer.load("E:/work/rwkv_core/rwkv_vocab_v20230424.txt");
+    tokenizer.load("c:/work/rwkv_cuda/model/rwkv_vocab_v20230424.txt");
     //tokenizer.load("rwkv_vocab_v20230424.txt");
     printf("tokenizer loaded\n");
 
     auto model_tensors = safe_tensors_model_t();
-    model_tensors.load("E:/work/rwkv_core/util/0.1b.fp16.safetensors");
+    //model_tensors.load("E:/work/rwkv_core/util/0.1b.fp16.safetensors");
     //model_tensors.load("0.1b.fp16.safetensors");
-    //model_tensors.load("E:/work/rwkv_cuda/3b.fp16.safetensors");
+    model_tensors.load("c:/work/rwkv_cuda/model/3b.fp16.safetensors");
     printf("model parsed\n");
 
     auto rwkv_model = rwkv_model_cuda_t();
@@ -114,8 +183,13 @@ int main()
     std::vector<float> logits;
     //logits = rwkv_model.forward(rwkv_state, token_ids);
 
-    for (uint32_t i = 0; i < token_ids.size(); i++)
-        logits = rwkv_model.forward(rwkv_state, std::vector<uint16_t>(1, token_ids[i]));
+    cuda::timer_t timer;
+
+    timer.start();
+
+    //for (uint32_t i = 0; i < token_ids.size(); i++)
+    //    logits = rwkv_model.forward(rwkv_state, std::vector<uint16_t>(1, token_ids[i]));
+    logits = rwkv_model.forward(rwkv_state, token_ids);
 
     //auto it = std::max_element(logits.begin(), logits.end());
 
@@ -127,10 +201,6 @@ int main()
     printf(gbk_str.c_str());
     gbk_str = utf8_to_gbk(out_word.c_str());
     printf(gbk_str.c_str());
-
-    cuda::timer_t timer;
-
-    timer.start();
 
     for (uint32_t i = 0; i < 100; i++)
     {
@@ -151,29 +221,6 @@ int main()
 
     timer.stop();
     printf("Time to generate:  %3.1f ms \n", timer.elapsed_ms());
-
-    return 0;
-}
-
-int main2()
-{
-    const uint32_t m = 768;
-    const uint32_t k = 768;
-    const uint32_t n = 1;
-
-    auto a = cuda::malloc<half>(m * k);
-    auto b = cuda::malloc<half>(k * n);
-    auto c = cuda::malloc<half>(m * n);
-
-    cuda::fill_fp16(a, 1.f/100.f, m * k);
-    cuda::fill_fp16(b, 2.f/100.f, k * n);
-
-    //auto result = cuda::gemm<half>(a, b, c, m, k, n);
-    auto result = cuda::gemv<half>(a, b, c, m, k);
-
-    std::vector<float> h_c(m * n);
-
-    cuda::dump_fp16(&h_c[0], c, m * n);
 
     return 0;
 }

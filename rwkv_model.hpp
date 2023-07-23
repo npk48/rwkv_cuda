@@ -87,6 +87,8 @@ struct rwkv_head_cuda_t
 	cuda::tensor_t head_weight;				// transpose
 };
 
+#define LOAD_IN_ROW_MAJOR
+
 class rwkv_model_cuda_t
 {
 public:
@@ -166,14 +168,16 @@ public:
 		cuda::free_tensor(tensor);
 		cuda::free_tensor(this->emb.ln0_weight);
 		cuda::free_tensor(this->emb.ln0_bias);
+		{
+			auto ptr = malloc(this->emb.emb_weight.byte_size);
+			cuda::dump(ptr, this->emb.emb_weight.data, this->emb.emb_weight.byte_size);
+			cuda::free_tensor(this->emb.emb_weight);
+			this->emb.emb_weight.data = (uint8_t*)ptr;
+		}
 
 		// load layers
 		for (uint32_t i = 0; i < layer_count; i++)
 		{
-			// calculate layer 0 in fp32 else pf16;
-			this->layer_strategy.push_back(i == 0 ? cuda::data_type_t::fp32 : cuda::data_type_t::fp16);
-			//this->layer_strategy.push_back(cuda::data_type_t::fp32);
-
 			std::string prefix = "blocks." + std::to_string(i) + ".";
 
 			rwkv_layer_cuda_t layer;
@@ -201,28 +205,42 @@ public:
 			layer.att_time_mix_v = load_tensor(prefix + "att.time_mix_v");
 
 			// transpose
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.att_key_weight = load_tensor(prefix + "att.key.weight");
+			std::swap(layer.att_key_weight.shape.x, layer.att_key_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "att.key.weight");
 			layer.att_key_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.att_key_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			// column major no need to transpose
 			//layer.att_key_weight = load_tensor(prefix + "att.key.weight");
 
 			// transpose
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.att_value_weight = load_tensor(prefix + "att.value.weight");
+			std::swap(layer.att_value_weight.shape.x, layer.att_value_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "att.value.weight");
 			layer.att_value_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.att_value_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			//layer.att_value_weight = load_tensor(prefix + "att.value.weight");
 
 			// transpose
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.att_receptance_weight = load_tensor(prefix + "att.receptance.weight");
+			std::swap(layer.att_receptance_weight.shape.x, layer.att_receptance_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "att.receptance.weight");
 			layer.att_receptance_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.att_receptance_weight.data);
 			cuda::free_tensor(tensor);
-			// layer.att_receptance_weight = load_tensor(prefix + "att.receptance.weight");
+#endif
 
 			// transpose w[x] then w[x] / (2 ** int(layer_id / 6))
 			// tensor = load_tensor(prefix + "att.output.weight");
@@ -230,12 +248,15 @@ public:
 			// cuda::transpose_tensor(tensor, layer.att_output_weight);
 			// cuda::free_tensor(tensor);
 			// cuda::scale_tensor(layer.att_output_weight, 1.f / std::powf(2, (float)(uint32_t(i / 6))));
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.att_output_weight = load_tensor(prefix + "att.output.weight");
+			std::swap(layer.att_output_weight.shape.x, layer.att_output_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "att.output.weight");
 			layer.att_output_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.att_output_weight.data);
-			cuda::element_wise_scale<half>(layer.att_output_weight.byte_size / 2, (half*)layer.att_output_weight.data, 
-				1.f / std::powf(2, (float)(uint32_t(i / 6))), (half*)layer.att_output_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			//layer.att_output_weight = load_tensor(prefix + "att.output.weight");
 			//cuda::element_wise_scale<half>(layer.att_output_weight.byte_size / 2, (half*)layer.att_output_weight.data, 1.f / std::powf(2, (float)(uint32_t(i / 6))), (half*)layer.att_output_weight.data);
@@ -247,11 +268,15 @@ public:
 			// tensor = load_tensor(prefix + "ffn.key.weight");
 			// layer.ffn_key_weight = cuda::create_tensor_fp16({ tensor.shape.y, tensor.shape.x, 1 });
 			// cuda::transpose_tensor(tensor, layer.ffn_key_weight);
-			// cuda::free_tensor(tensor);
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.ffn_key_weight = load_tensor(prefix + "ffn.key.weight");
+			std::swap(layer.ffn_key_weight.shape.x, layer.ffn_key_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "ffn.key.weight");
 			layer.ffn_key_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.ffn_key_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			//layer.ffn_key_weight = load_tensor(prefix + "ffn.key.weight");
 
@@ -261,12 +286,15 @@ public:
 			// cuda::transpose_tensor(tensor, layer.ffn_value_weight);
 			// cuda::free_tensor(tensor);
 			// cuda::scale_tensor(layer.ffn_value_weight, 1.f / std::powf(2, (float)(uint32_t(i / 6))));
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.ffn_value_weight = load_tensor(prefix + "ffn.value.weight");
+			std::swap(layer.ffn_value_weight.shape.x, layer.ffn_value_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "ffn.value.weight");
 			layer.ffn_value_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.ffn_value_weight.data);
-			cuda::element_wise_scale<half>(layer.ffn_value_weight.byte_size / 2, (half*)layer.ffn_value_weight.data, 
-				1.f / std::powf(2, (float)(uint32_t(i / 6))), (half*)layer.ffn_value_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			//layer.ffn_value_weight = load_tensor(prefix + "ffn.value.weight");
 			//cuda::element_wise_scale<half>(layer.ffn_value_weight.byte_size / 2, (half*)layer.ffn_value_weight.data, 1.f / std::powf(2, (float)(uint32_t(i / 6))), (half*)layer.ffn_value_weight.data);
@@ -277,10 +305,15 @@ public:
 			// layer.ffn_receptance_weight = cuda::create_tensor_fp16({ tensor.shape.y, tensor.shape.x, 1 });
 			// cuda::transpose_tensor(tensor, layer.ffn_receptance_weight);
 			// cuda::free_tensor(tensor);
+#ifdef LOAD_IN_ROW_MAJOR
+			layer.ffn_receptance_weight = load_tensor(prefix + "ffn.receptance.weight");
+			std::swap(layer.ffn_receptance_weight.shape.x, layer.ffn_receptance_weight.shape.y);
+#else
 			tensor = load_tensor(prefix + "ffn.receptance.weight");
 			layer.ffn_receptance_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 			cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)layer.ffn_receptance_weight.data);
 			cuda::free_tensor(tensor);
+#endif
 
 			//layer.ffn_receptance_weight = load_tensor(prefix + "ffn.receptance.weight");
 
@@ -296,10 +329,15 @@ public:
 		// this->head.head_weight = cuda::create_tensor_fp16({ tensor.shape.y, tensor.shape.x, 1 });
 		// cuda::transpose_tensor(tensor, this->head.head_weight);
 		// cuda::free_tensor(tensor);
+#ifdef LOAD_IN_ROW_MAJOR
+		this->head.head_weight = load_tensor("head.weight");
+		std::swap(this->head.head_weight.shape.x, this->head.head_weight.shape.y);
+#else
 		tensor = load_tensor("head.weight");
 		this->head.head_weight = cuda::create_tensor<half>({ tensor.shape.y, tensor.shape.x, 1 });
 		cuda::transpose<half>(tensor.shape.y, tensor.shape.x, (half*)tensor.data, (half*)this->head.head_weight.data);
 		cuda::free_tensor(tensor);
+#endif
 
 		//this->head.head_weight = load_tensor("head.weight");
 	}
@@ -312,11 +350,9 @@ public:
 		{
 			rwkv_layer_state_cuda_t layer_state;
 
-			auto& strategy = this->layer_strategy[i];
-
 			auto x = cuda::tensor_shape_t(this->emb_size);
 
-			layer_state.att_xx = strategy == cuda::data_type_t::fp16 ? cuda::create_tensor<half>(x) : cuda::create_tensor<float>(x);
+			layer_state.att_xx = cuda::create_tensor<float>(x);
 			cuda::zero_memory(layer_state.att_xx.data, layer_state.att_xx.byte_size);
 
 			layer_state.att_aa = cuda::create_tensor<float>(x);
@@ -328,7 +364,7 @@ public:
 			layer_state.att_pp = cuda::create_tensor<float>(x);
 			cuda::fill_fp32((float*)layer_state.att_pp.data, -1e30, this->emb_size);
 
-			layer_state.ffn_xx = strategy == cuda::data_type_t::fp16 ? cuda::create_tensor<half>(x) : cuda::create_tensor<float>(x);
+			layer_state.ffn_xx = cuda::create_tensor<float>(x);
 			cuda::zero_memory(layer_state.ffn_xx.data, layer_state.ffn_xx.byte_size);
 
 			state.push_back(layer_state);
@@ -366,103 +402,56 @@ public:
 		cuda::token_to_emb(&tokens[0], token_size, emb.emb_weight, x0);
 		//cuda::sync();
 
+		{
+			auto x0_fp32 = cuda::create_tensor<float>(x0.shape);
+			auto x1_fp32 = cuda::create_tensor<float>(x0.shape);
+
+			cuda::convert<half, float>((half*)x0.data, (float*)x0_fp32.data, x0.shape.x * x0.shape.y);
+			cuda::convert<half, float>((half*)x1.data, (float*)x1_fp32.data, x0.shape.x * x0.shape.y);
+
+			cuda::free_tensor(x0);
+			cuda::free_tensor(x1);
+
+			std::swap(x0_fp32, x0);
+			std::swap(x1_fp32, x1);
+			//inspect_tensor(x0);
+		}
+
+		cuda::inspect_tensor(x0);
+
+		auto time_mix = token_size == 1 ? cuda::time_mix_one : cuda::time_mix_seq;
+		auto channel_mix = token_size == 1 ? cuda::channel_mix_one : cuda::channel_mix_seq;
+
 		for (uint32_t i = 0; i < this->layer_count; i++)
 		{
 			auto& layer = this->layers[i];
 			auto& layer_state = state[i];
-			auto& strategy = this->layer_strategy[i];
 
 			cuda::inspect_tensor(x0);
 
-			if (strategy != cuda::data_type_t::fp16 && x0.type == cuda::data_type_t::fp16)
-			{
-				auto x0_fp32 = cuda::create_tensor<float>(x0.shape);
-				auto x1_fp32 = cuda::create_tensor<float>(x0.shape);
-
-				cuda::convert<half, float>((half*)x0.data, (float*)x0_fp32.data, x0.shape.x);
-				cuda::convert<half, float>((half*)x1.data, (float*)x1_fp32.data, x0.shape.x);
-
-				cuda::free_tensor(x0);
-				cuda::free_tensor(x1);
-
-				std::swap(x0_fp32, x0);
-				std::swap(x1_fp32, x1);
-				//inspect_tensor(x0);
-			}
-			else if (strategy != cuda::data_type_t::fp32 && x0.type == cuda::data_type_t::fp32)
-			{
-				auto x0_fp16 = cuda::create_tensor<half>(x0.shape);
-				auto x1_fp16 = cuda::create_tensor<half>(x0.shape);
-
-				cuda::convert<float, half>((float*)x0.data, (half*)x0_fp16.data, x0.shape.x);
-				cuda::convert<float, half>((float*)x1.data, (half*)x1_fp16.data, x0.shape.x);
-
-				cuda::free_tensor(x0);
-				cuda::free_tensor(x1);
-
-				std::swap(x0_fp16, x0);
-				std::swap(x1_fp16, x1);
-			}
-
-			cuda::inspect_tensor(x0);
-
-			if(x0.type == cuda::data_type_t::fp16)
-				cuda::time_mix_one<half>(
-					x0,
-					layer_state.att_xx, layer_state.att_aa, layer_state.att_bb, layer_state.att_pp,
-					layer.ln1_weight, layer.ln1_bias,
-					layer.att_time_mix_r, layer.att_time_mix_k, layer.att_time_mix_v,
-					layer.att_time_decay, layer.att_time_first,
-					layer.att_key_weight, layer.att_value_weight, layer.att_receptance_weight, layer.att_output_weight
+			time_mix(
+				x0,
+				layer_state.att_xx, layer_state.att_aa, layer_state.att_bb, layer_state.att_pp,
+				layer.ln1_weight, layer.ln1_bias,
+				layer.att_time_mix_r, layer.att_time_mix_k, layer.att_time_mix_v,
+				layer.att_time_decay, layer.att_time_first,
+				layer.att_key_weight, layer.att_value_weight, layer.att_receptance_weight, layer.att_output_weight
 				);
-			else
-				cuda::time_mix_one<float>(
-					x0,
-					layer_state.att_xx, layer_state.att_aa, layer_state.att_bb, layer_state.att_pp,
-					layer.ln1_weight, layer.ln1_bias,
-					layer.att_time_mix_r, layer.att_time_mix_k, layer.att_time_mix_v,
-					layer.att_time_decay, layer.att_time_first,
-					layer.att_key_weight, layer.att_value_weight, layer.att_receptance_weight, layer.att_output_weight
-					);
 
 			cuda::inspect_tensor(x0);
 
-			if (x0.type == cuda::data_type_t::fp16)
-				cuda::channel_mix_one<half>(
-					x0,
-					layer_state.ffn_xx,
-					layer.ln2_weight, layer.ln2_bias,
-					layer.ffn_time_mix_r, layer.ffn_time_mix_k,
-					layer.ffn_key_weight, layer.ffn_value_weight, layer.ffn_receptance_weight
+			channel_mix(
+				x0,
+				layer_state.ffn_xx,
+				layer.ln2_weight, layer.ln2_bias,
+				layer.ffn_time_mix_r, layer.ffn_time_mix_k,
+				layer.ffn_key_weight, layer.ffn_value_weight, layer.ffn_receptance_weight
 				);
-			else
-				cuda::channel_mix_one<float>(
-					x0,
-					layer_state.ffn_xx,
-					layer.ln2_weight, layer.ln2_bias,
-					layer.ffn_time_mix_r, layer.ffn_time_mix_k,
-					layer.ffn_key_weight, layer.ffn_value_weight, layer.ffn_receptance_weight
-					);
 			
 			cuda::inspect_tensor(x0);
-
-			if ((i + 1) % 6 == 0)
-				cuda::element_wise_scale<half>(x0.shape.x, (half*)x0.data, 0.5f, (half*)x0.data);
 		}
 
-		if (x0.type == cuda::data_type_t::fp32)
-		{
-			auto x1_fp32 = cuda::create_tensor<float>(x0.shape);
-
-			cuda::free_tensor(x1);
-
-			std::swap(x1_fp32, x1);
-		}
-
-		if (x0.type == cuda::data_type_t::fp16)
-			cuda::layernorm<half>((half*)x0.data, (half*)head.ln_out_weight.data, (half*)head.ln_out_bias.data, (half*)x1.data, 1, x0.shape.x);
-		else
-			cuda::layernorm<float>((float*)x0.data, (half*)head.ln_out_weight.data, (half*)head.ln_out_bias.data, (float*)x1.data, 1, x0.shape.x);
+		cuda::layernorm<float>((float*)x0.data, (half*)head.ln_out_weight.data, (half*)head.ln_out_bias.data, (float*)x1.data, token_size, emb_size);
 		//cuda::sync();
 		std::swap(x1, x0);
 
@@ -470,10 +459,8 @@ public:
 		//inspect_tensor(head.head_weight);
 
 		std::vector<float> logits(vocab_size);
-		if(x0.type == cuda::data_type_t::fp16)
-			cuda::emb_to_logits<half>(x0, token_size, head.head_weight, &logits[0]);
-		else
-			cuda::emb_to_logits<float>(x0, token_size, head.head_weight, &logits[0]);
+		
+		cuda::emb_to_logits<float>(x0, token_size, head.head_weight, &logits[0]);
 		//cuda::sync();
 
 		cuda::free_tensor(x0);

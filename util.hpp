@@ -6,11 +6,10 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 
-#include <cutlass/util/reference/host/tensor_fill.h>
+#include <vector>
 
 namespace cuda
 {
-#pragma optimize( "", off )
 	struct timer_t
 	{
 		cudaEvent_t evt_start;
@@ -94,6 +93,11 @@ namespace cuda
 	// 		h_dst[i] = __half2float(tmp[i]);
 	// }
 
+	inline void dump(void* h_dst, void* d_src, uint64_t size)
+	{
+		cudaMemcpy(h_dst, d_src, size, cudaMemcpyKind::cudaMemcpyDeviceToHost);
+	}
+
 	inline void dump_fp32(float* h_dst, float* d_src, uint32_t count)
 	{
 		cudaMemcpy(&h_dst[0], d_src, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToHost);
@@ -104,9 +108,19 @@ namespace cuda
 		cudaMemcpy(d_dst, h_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
 	}
 
+	inline void load_fp32(float* d_dst, float* h_src, uint32_t count)
+	{
+		cudaMemcpy(d_dst, h_src, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyHostToDevice);
+	}
+
 	inline void copy_fp16(half* d_dst, half* d_src, uint32_t count)
 	{
 		cudaMemcpy(d_dst, d_src, sizeof(half) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+	}
+
+	inline void copy_fp32(float* d_dst, float* d_src, uint32_t count)
+	{
+		cudaMemcpy(d_dst, d_src, sizeof(float) * count, cudaMemcpyKind::cudaMemcpyDeviceToDevice);
 	}
 
 	template<typename T>
@@ -118,8 +132,6 @@ namespace cuda
 	static inline void sync()
 	{
 		cudaDeviceSynchronize();
-		auto result = cudaGetLastError();
-		assert(result == cudaSuccess);
 	}
 
 	enum data_type_t
@@ -174,38 +186,21 @@ namespace cuda
 
 	inline void inspect_tensor(cuda::tensor_t& tensor)
 	{
-		return;
-		//Sleep(100);
-		auto err = cudaGetLastError();
+		//return;
+		static bool do_inspect = false;
+		if (!do_inspect) return;
+		
 		auto tensor_size = tensor.shape.x * tensor.shape.y * tensor.shape.z;
-		std::vector<float> h_tensor(tensor_size);
-		if (tensor.type == cuda::data_type_t::fp16)
-			cuda::dump_fp16(&h_tensor[0], (half*)tensor.data, tensor_size);
-		else
+
+		//std::vector<float> h_tensor(tensor_size);
+		float* h_tensor = new float[tensor_size];
+
+		if (tensor.type == cuda::data_type_t::fp32)
 			cuda::dump_fp32(&h_tensor[0], (float*)tensor.data, tensor_size);
 
-		bool has_nan = false;
-		bool has_inf = false;
-		uint32_t idx = 0;
-		for (uint32_t i = 0; i < h_tensor.size(); i++)
-		{
-			idx = i;
-			if (std::isnan(h_tensor[i]))
-			{
-				has_nan = true;
-				break;
-			}
-			if (std::isinf(h_tensor[i]))
-			{
-				has_inf = true;
-				break;
-			}
-		}
-
-		if (has_nan || has_inf)
-			err = cudaError_t::cudaErrorUnknown;
+		delete[] h_tensor;
+		do_inspect = false;
 	}
-#pragma optimize( "", on )
 }
 
 #endif

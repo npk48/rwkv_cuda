@@ -41,13 +41,17 @@ def sample_typical(self, logits):
 
 #include "simd.hpp"
 
+#include "kernel/softmax.cuh"
+#include "thrust.hpp"
+
 namespace sampler
 {
     inline uint32_t typical(std::vector<float> logits, float tau, float temp)
     {
         // probs = F.softmax(logits.float(), dim=-1)
         std::vector<float> probs = logits;
-        simd::softmax(probs);
+        //simd::softmax(probs);
+        cuda::softmax_(&probs[0], &probs[0], 1, probs.size());
 
         // logits = -torch.log(probs)
         logits = probs;
@@ -65,7 +69,8 @@ namespace sampler
         
         // sorted_ids = torch.argsort(logits)
         std::vector<uint32_t> sorted_id(logits.size());
-        simd::argsort(sorted_id, logits);
+        //simd::argsort(sorted_id, logits);
+        thrust::argsort_host(&sorted_id[0], &logits[0], logits.size());
 
         // sorted_logits = logits[sorted_ids]
         // sorted_probs = probs[sorted_ids]
@@ -81,6 +86,7 @@ namespace sampler
 
         // cumulative_probs = torch.cumsum(sorted_probs, dim=-1).cpu().numpy()
         simd::cumsum(tmp, sorted_prob);
+        //thrust::cumsum_host(&tmp[0], &sorted_prob[0], sorted_prob.size());
 
         // cutoff = np.sum(cumulative_probs < self.tau)
         simd::cmp_lt(tmp, tau, tmp);

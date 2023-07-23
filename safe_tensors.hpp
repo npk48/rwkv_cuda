@@ -12,7 +12,6 @@
 #include "json.hpp"
 #include "mmap.hpp"
 
-#pragma optimize( "", off )
 struct safe_tensors_t
 {
 	uint8_t* data;
@@ -90,7 +89,21 @@ private:
 			auto name = std::string(item.key());
 			auto& info = item.value();
 
-			this->layers[name] = { (uint8_t*)0, (uint64_t)0, info["dtype"], info["shape"], info["data_offsets"], this->file_descriptor, this->file_size, 0, 0 };
+			/*
+	uint8_t* data;
+	uint64_t size;
+
+	std::string dtype;
+	std::vector<uint64_t> shape;
+	std::pair<uint64_t, uint64_t> data_offsets;
+
+	int file_descriptor;
+	uint64_t file_size;
+	uint64_t file_offset;
+	uint8_t* file_mapping;
+			*/
+
+			this->layers[name] = { (uint8_t*)0, (uint64_t)0, info["dtype"].get<std::string>(), info["shape"].get<std::vector<uint64_t>>(), info["data_offsets"].get< std::pair<uint64_t, uint64_t>>(), this->file_descriptor, this->file_size, 0, 0};
 			this->layers[name].data = 0;// this->file_mapping + 8 + this->header_length + std::get<0>(this->layers[name].data_offsets);
 			this->layers[name].size = std::get<1>(this->layers[name].data_offsets) - std::get<0>(this->layers[name].data_offsets);
 			this->layers[name].file_offset = 8 + this->header_length + std::get<0>(this->layers[name].data_offsets);
@@ -99,5 +112,4 @@ private:
 
 };
 
-#pragma optimize( "", on )
 #endif

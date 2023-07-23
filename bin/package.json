@@ -1,0 +1,15 @@
+{
+  "name": "rwkv_simple_server",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "koffi": "^2.5.7"
+  }
+}
